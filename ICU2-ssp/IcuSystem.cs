@@ -34,7 +34,7 @@ namespace ICU2_ssp
         public event EventHandler NewDeviceData;
         public event EventHandler RunError;
         public event EventHandler<LogDataEventArgs> LogData;
-        public event EventHandler <DeviceEventArgs> NewDeviceEvent;
+        public event EventHandler<DeviceEventArgs> NewDeviceEvent;
 
         private sspComs coms;
         private sspDevice device;
@@ -46,6 +46,8 @@ namespace ICU2_ssp
         public string SerialNumber { get; set; }
         public string Version { get; set; }
         public string IPAddress { get; set; }
+
+        public string []  CameraName {get;set;}
 
 
 
@@ -71,6 +73,8 @@ namespace ICU2_ssp
             public string attribute { get; set; }
 
             public string camera_name { get; set; }
+
+            public DateTime timestamp { get; set; }
 
         }
 
@@ -128,6 +132,8 @@ namespace ICU2_ssp
             cmd = device.SspCommand;
             SystemRunning = false;
             DisabledSeen = false;
+
+            CameraName = new string[3];
 
         }
 
@@ -213,6 +219,27 @@ namespace ICU2_ssp
             {
                 return rsp;
             }
+            byte[] data = null;
+            rsp = GetCameraName(0, ref data);
+            if(rsp != CommandResponse.OK)
+            {
+                return rsp;
+
+            }
+            CameraName[0] = Encoding.UTF8.GetString(data);
+
+            rsp = GetCameraName(1, ref data);
+            if (rsp != CommandResponse.OK)
+            {
+                return rsp;
+            }
+            CameraName[1] = Encoding.UTF8.GetString(data);
+            rsp = GetCameraName(2, ref data);
+            if (rsp != CommandResponse.OK)
+            {
+                return rsp;
+            }
+            CameraName[2] = Encoding.UTF8.GetString(data);
 
             return rsp;
 
@@ -446,14 +473,14 @@ namespace ICU2_ssp
         }
 
 
-        private CommandResponse GetICUControlResponse(byte camera_index, byte info_index, ref byte[] response )
+        private CommandResponse GetCameraName(byte camera_index, ref byte[] response )
         {
 
 
             cmd.CommandHeader = (byte)0x2F;     // control command
             cmd.ParameterData[0] = (byte)0x01;    // read
             cmd.ParameterData[1] = (byte)0x01;   // camera sub command
-            cmd.ParameterData[2] = (byte)info_index;
+            cmd.ParameterData[2] = (byte)0x04;
             cmd.ParameterData[3] = (byte)camera_index;
             cmd.ParameterLength = 4;
             if (SendCommand(cmd) != CommandResponse.OK)
@@ -510,42 +537,22 @@ namespace ICU2_ssp
                         byte cam_index = data[i + 1];
                         DeviceEventArgs arg1 = new DeviceEventArgs();
                         arg1.age = (int)data[i + 2];
-                        byte[] rsp = null;
+                        arg1.timestamp = DateTime.Now;
+                        arg1.camera_name = CameraName[cam_index];
                         if(data[i + 3] == 0)
                         {
                             arg1.id_found = false;
-
                         }
                         else
                         {
+                            byte[] id_data = new byte[66];
+                            for(int j = 0; j < 66; j++)
+                            {
+                                id_data[j] = data[i + 4 + j];
+                            }
+                            arg1.uid = Encoding.UTF8.GetString(id_data,0,36);
+                            arg1.attribute = (Encoding.UTF8.GetString(id_data, 36, 30)).Trim();
                             arg1.id_found = true;
-                            cmd_rsp = GetICUControlResponse(cam_index, 2, ref rsp);
-                            if (cmd_rsp == CommandResponse.OK) { 
-                                arg1.uid = Encoding.UTF8.GetString(rsp);
-                            }
-                            else
-                            {
-                                arg1.id_found = false;
-                            }
-                            cmd_rsp = GetICUControlResponse(cam_index, 4, ref rsp);
-                            if (cmd_rsp == CommandResponse.OK)
-                            {
-                                arg1.camera_name = Encoding.UTF8.GetString(rsp);
-                            }
-                            else
-                            {
-                                arg1.id_found = false;
-                            }
-                            cmd_rsp = GetICUControlResponse(cam_index, 5, ref rsp);
-                            if (cmd_rsp == CommandResponse.OK)
-                            {
-                                arg1.attribute = Encoding.UTF8.GetString(rsp);
-                            }
-                            else
-                            {
-                                arg1.id_found = false;
-                            }
-
                         }
                         arg1.event_name = ICUEvents.FACE_DETECTED;
                         OnNewDeviceEvent(arg1);

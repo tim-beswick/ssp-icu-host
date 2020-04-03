@@ -42,22 +42,20 @@ namespace ICU2_ssp
             listView2.Columns.Add("dir",100);
             listView2.Columns.Add("Tx",500);
             listView2.HeaderStyle = ColumnHeaderStyle.None;
-            splitContainer3.Panel2.Controls.Add(listView2);
+            splitContainer2.Panel2.Controls.Add(listView2);
             listView2.Dock = DockStyle.Fill;
 
 
             listView3 = new ListViewNF();
             listView3.View = View.Details;
-            listView3.Columns.Add("1", 100);
-            listView3.Columns.Add("2", 100);
-            listView3.Columns.Add("3", 100);
-            listView3.Columns.Add("4", 100);
-            listView3.Columns.Add("5", 100);
-            listView3.HeaderStyle = ColumnHeaderStyle.None;
-            splitContainer3.Panel1.Controls.Add(listView3);
+            listView3.Columns.Add("DateTime", 150);
+            listView3.Columns.Add("Event", 150);
+            listView3.Columns.Add("Camera", 120);
+            listView3.Columns.Add("Age", 60);
+            listView3.Columns.Add("UID", 300);
+            listView3.Columns.Add("Group", 150);
+            splitContainer2.Panel1.Controls.Add(listView3);
             listView3.Dock = DockStyle.Fill;
-
-
 
         }
 
@@ -97,6 +95,9 @@ namespace ICU2_ssp
             AddListItem(listView1, "Version", sys.Version);
             AddListItem(listView1, "Serial Number", sys.SerialNumber);
             AddListItem(listView1, "IP address", sys.IPAddress);
+            AddListItem(listView1, "Camera", sys.CameraName[0]);
+            AddListItem(listView1, "Camera", sys.CameraName[1]);
+            AddListItem(listView1, "Camera", sys.CameraName[2]);
 
 
             if (listView1.InvokeRequired)
@@ -156,9 +157,10 @@ namespace ICU2_ssp
                 list.Invoke(new MethodInvoker(delegate
                 {
                     ListViewItem item = new ListViewItem();
-                    item.Text = args.event_name.ToString();
+                    item.Text = args.timestamp.ToString();
                     if(args.event_name == ICUEvents.FACE_DETECTED)
                     {
+                        item.SubItems.Add(args.event_name.ToString());
                         item.SubItems.Add(args.camera_name);
                         item.SubItems.Add(args.age.ToString());
                         if (args.id_found)
