@@ -6,7 +6,7 @@ using System.Threading.Tasks;
 using SSPComs;
 using SSPDevice;
 using System.Threading;
-
+using System.Diagnostics;
 
 namespace ICU2_ssp
 {
@@ -119,6 +119,23 @@ namespace ICU2_ssp
                 handler(this, e);
             }
         }
+
+
+        public IcuSystem(byte address)
+        {
+
+            device = new sspDevice();
+            device.SSPAddress = address;
+
+            coms = device.SspComs;
+            cmd = device.SspCommand;
+            SystemRunning = false;
+            DisabledSeen = false;
+
+            CameraName = new string[3];
+
+        }
+
 
 
         public IcuSystem(string com, byte address)
@@ -434,6 +451,7 @@ namespace ICU2_ssp
             if (!OpenPort())
             {
                 OnRunError(EventArgs.Empty);
+                ClosePort();
                 return;
             }
 
@@ -570,6 +588,60 @@ namespace ICU2_ssp
 
 
         }
+
+
+        public List<string> GetInterfacePort()
+        {
+            System.Management.ManagementObjectCollection moReturn;
+            System.Management.ManagementObjectSearcher moSearch;
+
+            List<string> mComFullName = new List<string>();
+
+            int i, j;
+
+            moSearch = new System.Management.ManagementObjectSearcher("root\\CIMV2", "Select * from Win32_PnPEntity");
+            moReturn = moSearch.Get();
+
+            foreach(System.Management.ManagementObject mo in moReturn)
+            {
+                if(mo.Properties["Name"].Value != null)
+                {
+
+
+
+                    if(
+                        mo.Properties["Name"].Value.ToString().Contains("USB Serial Port") ||
+                        mo.Properties["Name"].Value.ToString().Contains("Gadget") ||
+                        mo.Properties["Name"].Value.ToString().Contains("ITL USB") ||
+                        mo.Properties["Name"].Value.ToString().Contains("ITL BV") ||
+                        mo.Properties["Name"].Value.ToString().Contains("USB Serial Device")
+                        )
+                    {
+
+                        mComFullName.Add(mo.Properties["Name"].Value.ToString());
+
+                    }
+
+
+                }
+            }
+
+
+            return mComFullName;
+
+
+        }
+
+
+        public string GetPortFromName(string name)
+        {
+
+            int ind = name.IndexOf("COM");
+            return name.Substring(ind, 5).Replace(")","");
+
+        }
+
+
 
 
 

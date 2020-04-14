@@ -24,7 +24,17 @@ namespace ICU2_ssp
         {
             InitializeComponent();
 
-            sys = new IcuSystem("COM9", 25);
+            this.Text = "ICU2 SSP";
+
+            sys = new IcuSystem(25);
+
+            List<String> ports =  sys.GetInterfacePort();
+            foreach(String s in ports)
+            {
+                comboBox1.Items.Add(s);
+            }
+
+
             sys.NewDeviceData += NewDeviceDataHandler;
             sys.RunError += Sys_RunError;
             sys.LogData += Sys_LogData;
@@ -180,6 +190,12 @@ namespace ICU2_ssp
 
         private void button1_Click(object sender, EventArgs e)
         {
+            if(comboBox1.SelectedIndex == -1)
+            {
+                MessageBox.Show("Select a serial comport");
+                return;
+            }
+
             sys.StartRun();
         }
 
@@ -191,6 +207,20 @@ namespace ICU2_ssp
         private void button2_Click(object sender, EventArgs e)
         {
             sys.StopRun();
+        }
+
+        private void comboBox1_SelectedIndexChanged(object sender, EventArgs e)
+        {
+
+            if(sys != null)
+            {
+                string port = sys.GetPortFromName(comboBox1.Text);
+                if(port != "")
+                {
+                    sys.ComPort = port;
+                }
+            }
+
         }
     }
 }
