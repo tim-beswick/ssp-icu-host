@@ -11,6 +11,17 @@ using System.Diagnostics;
 namespace ICU2_ssp
 {
 
+    public enum RunState
+    {
+        None,
+        Discover,
+        Secure,
+        Info,
+        Enable,
+        Run
+    }
+
+
     public enum CommandResponse
     {
         OK = 0,
@@ -32,7 +43,7 @@ namespace ICU2_ssp
     {
 
         public event EventHandler NewDeviceData;
-        public event EventHandler RunError;
+        public event EventHandler<ErrorEventArgs> RunError;
         public event EventHandler<LogDataEventArgs> LogData;
         public event EventHandler<DeviceEventArgs> NewDeviceEvent;
 
@@ -41,6 +52,9 @@ namespace ICU2_ssp
         private SSPCommand cmd;
         private bool SystemRunning;
         private bool DisabledSeen;
+
+        private RunState state;
+
 
         public string ComPort { get; set; }
         public string SerialNumber { get; set; }
@@ -55,9 +69,18 @@ namespace ICU2_ssp
         {
             public string packet { get; set; }
 
+            public string encrypted_packet { get; set; }
+
             public string timestamp { get; set; }
             public string direction { get; set; }
 
+        }
+
+
+        public class ErrorEventArgs : EventArgs
+        {
+            public CommandResponse response { get; set; }
+            public string message { get; set; }
         }
 
 
@@ -91,9 +114,9 @@ namespace ICU2_ssp
         }
 
 
-        protected virtual void OnRunError(EventArgs e)
+        protected virtual void OnRunError(ErrorEventArgs e)
         {
-            EventHandler handler = RunError;
+            EventHandler<ErrorEventArgs> handler = RunError;
             if (handler != null)
             {
                 handler(this, e);
@@ -129,10 +152,13 @@ namespace ICU2_ssp
 
             coms = device.SspComs;
             cmd = device.SspCommand;
+            cmd.ESSPCommand = false;
+           
             SystemRunning = false;
             DisabledSeen = false;
 
             CameraName = new string[3];
+            state = RunState.None;
 
         }
 
@@ -144,13 +170,16 @@ namespace ICU2_ssp
             ComPort = com;
             device = new sspDevice();
             device.SSPAddress = address;
-
+          
             coms = device.SspComs;
             cmd = device.SspCommand;
+            cmd.ESSPCommand = false;
             SystemRunning = false;
             DisabledSeen = false;
 
             CameraName = new string[3];
+
+            state = RunState.None;
 
         }
 
@@ -175,10 +204,22 @@ namespace ICU2_ssp
 
             if(ComPort == "")
             {
+
+                OnRunError(new ErrorEventArgs() { response = CommandResponse.PortError, message = "No Port selected" });
                 return false;
             }
 
-            return coms.OpenPort(ComPort);
+            if (coms.OpenPort(ComPort))
+            {
+
+                return true;
+            }
+            else
+            {
+                OnRunError(new ErrorEventArgs() { response = CommandResponse.PortError, message = "Unable to open port" });
+                return false;
+            }
+
 
 
         }
@@ -193,7 +234,7 @@ namespace ICU2_ssp
 
         public CommandResponse Sync()
         {
-
+            cmd.ParameterLength = 0;
             cmd.CommandHeader = (byte)SSP_COMMAND.SYNC;
             cmd.ESSPCommand = false;
 
@@ -215,12 +256,8 @@ namespace ICU2_ssp
 
         public CommandResponse RunInit()
         {
+            CommandResponse rsp;
 
-            CommandResponse rsp = Sync();
-            if(rsp != CommandResponse.OK)
-            {
-                return rsp;
-            }
             rsp = GetSerialNumber();
             if (rsp != CommandResponse.OK)
             {
@@ -264,6 +301,21 @@ namespace ICU2_ssp
 
 
         
+        private CommandResponse KeyExchange()
+        {
+            if(device.DoDeviceKeyExchange() == SSP_COMMAND_RESPONSE.OK)
+            {
+                // success - set global key flag so for all future commands
+                cmd.ESSPCommand = true; 
+                return CommandResponse.OK;
+            }
+            else
+            {
+                return CommandResponse.GenericFail;
+            }
+        }
+
+
 
 
         private CommandResponse GetSerialNumber()
@@ -429,6 +481,7 @@ namespace ICU2_ssp
                 direction = "TX",
                 packet = coms.GetSSP().SSPLog.TxPacketPlain,
                 timestamp = coms.GetSSP().SSPLog.TxTimeStamp,
+                encrypted_packet = cmd.ESSPCommand ? coms.GetSSP().SSPLog.TxPacketEncrypted : "",
             };
             OnLogData(arg);
             LogDataEventArgs arg_r = new LogDataEventArgs()
@@ -436,6 +489,8 @@ namespace ICU2_ssp
                 direction = "RX",
                 packet = coms.GetSSP().SSPLog.RxPacketPlain,
                 timestamp = coms.GetSSP().SSPLog.RxTimeStamp,
+                encrypted_packet = cmd.ESSPCommand ? coms.GetSSP().SSPLog.RxPacketEncrypted : "",
+
             };
             OnLogData(arg_r);
 
@@ -450,40 +505,79 @@ namespace ICU2_ssp
 
             if (!OpenPort())
             {
-                OnRunError(EventArgs.Empty);
                 ClosePort();
                 return;
             }
 
 
-            if(RunInit() != CommandResponse.OK)
-            {
-                OnRunError(EventArgs.Empty);
-                return;
-            }
-            OnNewDeviceData(EventArgs.Empty);
-
-
-            if(Enable() != CommandResponse.OK)
-            {
-                OnRunError(EventArgs.Empty);
-                return;
-            }
+            state = RunState.Discover;
             SystemRunning = true;
-            while(SystemRunning)
+            while (SystemRunning)
             {
 
-                if(Poll() != CommandResponse.OK)
+                switch (state)
                 {
-                    OnRunError(EventArgs.Empty);
+                    case RunState.Discover: // find a connected device
+                        if(Sync() == CommandResponse.OK)
+                        {
+                            state = RunState.Secure;
+                        }
+                        else
+                        {
+                            OnRunError(new ErrorEventArgs() { response = CommandResponse.Timeout, message = "Connection timeout" });
+                            Thread.Sleep(1000); // retry delay
+                        }
+                        break;
+                    case RunState.Secure: // set up encrypted ssp
+                        if(KeyExchange() == CommandResponse.OK)
+                        {
+                            state = RunState.Info;
+                        }
+                        else
+                        {
+                            OnRunError(new ErrorEventArgs() { response = CommandResponse.GenericFail, message = "Key Exchange fail" });
+                            state = RunState.Discover;
+                        }
+                        break;
+                    case RunState.Info:
+                        if(RunInit() == CommandResponse.OK)
+                        {
+                            // signak new device discovered
+                            OnNewDeviceData(EventArgs.Empty);
+                            state = RunState.Enable;
+                        }
+                        else
+                        {
+                            OnRunError(new ErrorEventArgs() { response = CommandResponse.GenericFail, message = "Device Info failed" });
+                            state = RunState.Discover;
+                        }
+                        break;
+                    case RunState.Enable:
+                        if (Enable() == CommandResponse.OK)
+                        {
+                            state = RunState.Run;
+                        }
+                        else
+                        {
+                            OnRunError(new ErrorEventArgs() { response = CommandResponse.GenericFail, message = "Enable faile" });
+                            state = RunState.Discover;
+                        }
+                        break;
+                    case RunState.Run:
+                        if(Poll() == CommandResponse.OK)
+                        {
+                            Thread.Sleep(300);  // poll delay
+                        }
+                        else
+                        {
+                            OnRunError(new ErrorEventArgs() { response = CommandResponse.Timeout, message = "Poll timeout" });
+                            state = RunState.Discover;
+                        }
+                        break;
                 }
 
-                // poll delay
-                Thread.Sleep(200);
 
             }
-
-
 
             ClosePort();
 

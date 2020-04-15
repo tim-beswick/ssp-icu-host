@@ -28,8 +28,8 @@ namespace ICU2_ssp
 
             sys = new IcuSystem(25);
 
-            List<String> ports =  sys.GetInterfacePort();
-            foreach(String s in ports)
+            List<String> ports = sys.GetInterfacePort();
+            foreach (String s in ports)
             {
                 comboBox1.Items.Add(s);
             }
@@ -48,9 +48,10 @@ namespace ICU2_ssp
 
             listView2 = new ListViewNF();
             listView2.View = View.Details;
-            listView2.Columns.Add("time",100);
-            listView2.Columns.Add("dir",100);
-            listView2.Columns.Add("Tx",500);
+            listView2.Columns.Add("time", 100);
+            listView2.Columns.Add("dir", 100);
+            listView2.Columns.Add("Tx", 500);
+            listView2.Columns.Add("enc", 800);
             listView2.HeaderStyle = ColumnHeaderStyle.None;
             splitContainer2.Panel2.Controls.Add(listView2);
             listView2.Dock = DockStyle.Fill;
@@ -67,6 +68,9 @@ namespace ICU2_ssp
             splitContainer2.Panel1.Controls.Add(listView3);
             listView3.Dock = DockStyle.Fill;
 
+            button1.Enabled = true;
+            button2.Enabled = false;
+
         }
 
         private void Sys_NewDeviceEvent(object sender, DeviceEventArgs e)
@@ -79,13 +83,15 @@ namespace ICU2_ssp
         private void Sys_LogData(object sender, LogDataEventArgs e)
         {
 
-            AddLogListItem(listView2, e.timestamp, e.direction, e.packet);
+            AddLogListItem(listView2, e.timestamp, e.direction, e.packet, e.encrypted_packet);
 
         }
 
-        private void Sys_RunError(object sender, EventArgs e)
+        private void Sys_RunError(object sender, ErrorEventArgs e)
         {
 
+
+            AddErrorListItem(listView3, DateTime.Now.ToString(), e.message);
 
 
 
@@ -99,6 +105,8 @@ namespace ICU2_ssp
                 listView1.Invoke(new MethodInvoker(delegate
                 {
                     listView1.Items.Clear();
+                    button2.Enabled = true;
+                    button1.Enabled = false;
                 }));
             }
 
@@ -121,6 +129,9 @@ namespace ICU2_ssp
                 }));
             }
 
+
+            AddUIEventListItem(listView3, "New Device connection");
+
         }
 
 
@@ -142,7 +153,25 @@ namespace ICU2_ssp
         }
 
 
-        private void AddLogListItem(ListView list, string v1, string v2, string v3)
+        private void AddErrorListItem(ListView list, string v1, string v2)
+        {
+            if (list.InvokeRequired)
+            {
+                list.Invoke(new MethodInvoker(delegate
+                {
+                    ListViewItem item = new ListViewItem();
+                    item.Text = v1;
+                    item.SubItems.Add(v2);
+                    list.Items.Add(item);
+
+                    list.EnsureVisible(list.Items.Count - 1);
+
+                }));
+            }
+        }
+
+
+        private void AddLogListItem(ListView list, string v1, string v2, string v3, string v4)
         {
             if (list.InvokeRequired)
             {
@@ -152,6 +181,7 @@ namespace ICU2_ssp
                     item.Text = v1;
                     item.SubItems.Add(v2);
                     item.SubItems.Add(v3);
+                    item.SubItems.Add(v4);
                     list.Items.Add(item);
                     list.EnsureVisible(list.Items.Count - 1);
                 }));
@@ -168,7 +198,7 @@ namespace ICU2_ssp
                 {
                     ListViewItem item = new ListViewItem();
                     item.Text = args.timestamp.ToString();
-                    if(args.event_name == ICUEvents.FACE_DETECTED)
+                    if (args.event_name == ICUEvents.FACE_DETECTED)
                     {
                         item.SubItems.Add(args.event_name.ToString());
                         item.SubItems.Add(args.camera_name);
@@ -186,36 +216,63 @@ namespace ICU2_ssp
         }
 
 
+        private void AddUIEventListItem(ListView list, string evt)
+        {
+            if (list.InvokeRequired)
+            {
+                list.Invoke(new MethodInvoker(delegate
+                {
+                    ListViewItem item = new ListViewItem();
+                    item.Text = DateTime.Now.ToString();
+                    item.SubItems.Add(evt);
+                    list.Items.Add(item);
+                    list.EnsureVisible(list.Items.Count - 1);
+                }));
+            }
+            else
+            {
+                ListViewItem item = new ListViewItem();
+                item.Text = DateTime.Now.ToString();
+                item.SubItems.Add(evt);
+                list.Items.Add(item);
+                list.EnsureVisible(list.Items.Count - 1);
+
+
+            }
+        }
+
 
 
         private void button1_Click(object sender, EventArgs e)
         {
-            if(comboBox1.SelectedIndex == -1)
+            if (comboBox1.SelectedIndex == -1)
             {
                 MessageBox.Show("Select a serial comport");
                 return;
             }
 
+            button1.Enabled = false;
+            AddUIEventListItem(listView3, "Start");
             sys.StartRun();
         }
 
-        private void Form1_Load(object sender, EventArgs e)
-        {
 
-        }
 
         private void button2_Click(object sender, EventArgs e)
         {
             sys.StopRun();
+            AddUIEventListItem(listView3, "Stop");
+            button1.Enabled = true;
+            button2.Enabled = false;
         }
 
         private void comboBox1_SelectedIndexChanged(object sender, EventArgs e)
         {
 
-            if(sys != null)
+            if (sys != null)
             {
                 string port = sys.GetPortFromName(comboBox1.Text);
-                if(port != "")
+                if (port != "")
                 {
                     sys.ComPort = port;
                 }
